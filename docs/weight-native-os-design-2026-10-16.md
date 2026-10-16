@@ -507,7 +507,7 @@ Use a length-extension-resistant hash, for example SHA-3.
 
 ## 24. Updated Design Decisions Log
 
-This log records the decisions from the later part of the discussion. It extends Section 15.
+This log records the decisions from the later part of the discussion. It extends Section 15. Items (a) to (g) record the decisions of Sections 17 to 23. Entries D11 to D16 continue the D1 to D10 sequence of Section 15 and record the decisions of Sections 26 to 31.
 
 | ID | Decision | Section |
 |---|---|---|
@@ -519,6 +519,48 @@ This log records the decisions from the later part of the discussion. It extends
 | f | Dispatch weights for dynamic cluster composition | 22 |
 | g | Weight manifest header with self-referencing hash | 23 |
 
+### D11. The store keeps deltas between weight versions, not full copies.
+
+- **Why:** This applies the Git object model to weights.
+- **Positives:** Updates are cheap. Rollback is trivial. Storage is saved.
+- **Negatives:** The relation between the hash and the delta is not defined yet.
+- **Effect on the program:** Version identity stays content-addressable through the hash. See Section 26.
+
+### D12. Every cluster ships with a signed capability token.
+
+- **Why:** The hash and the capability answer two separate questions.
+- **Positives:** The router can refuse a cluster that asks for more than it declares. The model is seL4 and Capsicum.
+- **Negatives:** Each cluster needs a capability and a signature. The router does two checks.
+- **Effect on the program:** The router checks the capability and the hash before dispatch. See Section 27.
+
+### D13. New cluster versions run in shadow execution before promotion.
+
+- **Why:** Old and new outputs on the same inputs show the effect of the change.
+- **Positives:** Zero-downtime safe upgrade. Production weight changes become routine.
+- **Negatives:** Two versions run at the same time. The tolerance value is not defined yet.
+- **Effect on the program:** Promotion depends on a comparison within tolerance. See Section 28.
+
+### D14. Dev and production use separate test regimes.
+
+- **Why:** Dev weights are mutable. Production weights are frozen.
+- **Positives:** Dev finds where the error boundary breaks. Production keeps a small regression check.
+- **Negatives:** Production testing uses no new inputs. It depends on the fail-closed gate.
+- **Effect on the program:** The program keeps a human-verified golden set. Statistical coverage replaces line coverage. See Section 29.
+
+### D15. Debugging uses binary search at cluster boundaries and a dedicated debugger cluster.
+
+- **Why:** No source code exists to step through.
+- **Positives:** Fast narrow-down. Context-aware logs. Parallel complexity.
+- **Negatives:** The debugger cluster is one more cluster to train and verify.
+- **Effect on the program:** Debugging follows the microservices observability pattern. See Sections 21 and 30.
+
+### D16. The weight file uses a self-referencing hash, and the header is part of the weight file.
+
+- **Why:** Zeroing the hash field removes the fixed-point problem. A header change breaks the hash.
+- **Positives:** The file verifies itself. The router uses a direct hash index.
+- **Negatives:** The atomic recompute race of Section 8.2 still needs an atomic update.
+- **Effect on the program:** The signed-header requirement stands. See Sections 23 and 31.
+
 ## 25. Open Questions (updated)
 
 These questions add to the open questions in Section 16.
@@ -527,6 +569,137 @@ These questions add to the open questions in Section 16.
 2. Can router dispatch weights themselves be versioned and hashed?
 3. How can training make error boundaries without false rejects?
 4. Can cluster classes share primitive weights (parameter sharing) to reduce the 279 MB footprint?
+5. Does the hash cover the full reconstructed weights or only the delta (Section 26)?
+6. How long can a delta chain grow before the store needs a full snapshot (Section 26)?
+7. Who signs the capability tokens, and with which key (Section 27)?
+8. Which resource limits does a capability declare, and how does the runtime enforce them (Section 27)?
+9. Which tolerance value applies to shadow execution, and is it one value or one value for each cluster (Section 28)?
+10. How many inputs does shadow execution need before promotion (Section 28)?
+11. How large must the golden input set be, and who maintains it (Section 29)?
+12. Which statistical coverage metric measures the input space (Section 29)?
+13. Who verifies the debugger cluster itself (Section 30)?
+14. Who signs the manifest header, and does the header signature relate to the frozen ROM reference hashes of Section 8.4 (Section 31)?
+
+## 26. Delta Store and Weight Diffing as First-Class Operation
+
+### 26.1 Store deltas, not copies
+
+The store keeps only the deltas between weight versions. It does not keep a full copy of each version. This applies the Git object model to weights.
+
+### 26.2 Effects
+
+An update is cheap. A rollback is trivial. The store uses less space.
+
+### 26.3 Version identity
+
+Version identity stays content-addressable through the hash. Section 7 defines hash-driven versioning. The discussion does not say if the hash covers the full reconstructed weights or the delta. Section 25 records this as an open question.
+
+## 27. Cluster Capability Tokens
+
+### 27.1 Signed capability
+
+Every cluster ships with a signed capability. The capability declares the input types, the output types, and the resource limits of the cluster.
+
+### 27.2 Check before dispatch
+
+The router checks the capability before dispatch. The router also checks the hash, as in Section 23.
+
+### 27.3 Two separate questions
+
+The hash answers the question: is this the same cluster? The capability answers the question: what may this cluster do? These are two separate questions. Thus the design uses two separate checks.
+
+### 27.4 Model
+
+The model is capability-based security, as in seL4 and Capsicum.
+
+## 28. Shadow Execution for Safe Updates
+
+### 28.1 Parallel run
+
+The new cluster version runs in parallel with the old version. Both versions receive the same inputs. The system compares the outputs.
+
+### 28.2 Promote or reject
+
+If the difference is within tolerance, the system promotes the new version. If the difference is outside tolerance, the system rejects the new version. The old version stays in service. The discussion does not give a tolerance value. Section 25 records this as an open question.
+
+![Figure 6. Shadow execution: old and new versions run on the same inputs; the system compares outputs and promotes or rejects.](../figures/fig6.png)
+
+*Figure 6. Shadow execution: old and new versions run on the same inputs; the system compares outputs and promotes or rejects.*
+
+### 28.3 Effect
+
+This gives a safe upgrade with zero downtime. A production weight change becomes a routine operation. Without shadow execution, it is the most dangerous operation.
+
+## 29. Dev vs Production Testing Environments
+
+### 29.1 Two environments
+
+In dev, weights are mutable. Updates are permitted in dev. In production, weights are frozen.
+
+### 29.2 Dev testing
+
+Dev testing uses a golden input set. The golden input set contains known input-output pairs. Humans verify these pairs. The golden set runs on the old version and on the new version, with a tolerance band. Dev testing also uses adversarial fuzzing. Dev testing also uses distribution-shift simulation. These two methods find where the error boundary breaks.
+
+### 29.3 Production testing
+
+Production testing is a regression check only. It uses the same golden set. It uses no new inputs. The fail-closed gate already handles unseen input (Sections 6.6 and 18).
+
+### 29.4 Three-level foundation
+
+Level 1 is differential testing. Level 2 is property-based testing with probabilistic bounds. Level 3 is regression testing.
+
+### 29.5 Coverage
+
+Line coverage has no meaning for weights. Statistical coverage of the input space replaces it.
+
+## 30. Binary-Search Debugging Refinement and Dedicated Debugger Cluster
+
+### 30.1 Relation to Section 21
+
+This section refines Section 21. It does not replace Section 21.
+
+### 30.2 Binary search at cluster boundaries
+
+Stop at a cluster boundary. If the output is correct, the fault is in a forward layer. Binary search then narrows the fault to one layer. Section 21.3 gives the same procedure at layer level.
+
+### 30.3 Dedicated debugger cluster
+
+A dedicated debugger cluster receives the activation outputs. It does its own logging. This extends Section 21.4.
+
+### 30.4 Context-aware logging
+
+Context-aware logging maps each context to its activation. This context maps to this activation. That context maps to that activation.
+
+### 30.5 Parallel complexity
+
+Complexity becomes parallel, not sequential. This is the same pattern as microservices observability. The pattern uses per-component logs, trace IDs, and narrow-down.
+
+## 31. Self-Referencing Hash Trick and Header-in-Weight Corrections
+
+### 31.1 Relation to Sections 8 and 23
+
+This section refines Section 23. It also applies to the fixed-point problem of Section 8.3.
+
+### 31.2 Self-referencing hash trick
+
+1. Set the hash field to zero.
+2. Compute the hash.
+3. Store the hash in the hash field.
+To verify, repeat the same process: set to zero, compute, compare.
+SHA-3 resists length extension.
+Thus this method is clean.
+
+### 31.3 Correction: header in the weight file
+
+The manifest header is PART of the weight file. It is not a separate artifact. A change to the header breaks the hash. The hash layer catches this change.
+
+### 31.4 Registry lookup
+
+The router finds a cluster by a direct hash index. It does not do a linear scan of all headers.
+
+### 31.5 Signed header
+
+The signed-header requirement stands. The discussion does not say who signs the header or which key is used. Section 25 records this as an open question.
 
 ## Appendix A. Karpathy ASD-STE100 Reference
 

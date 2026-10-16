@@ -14,7 +14,7 @@ The text uses ASD-STE100-style controlled technical English at about 80% stringe
 
 ## Update 2026-10-16
 
-On 2026-10-16 the authors added Sections 17-25. These sections record the later part of the discussion:
+On 2026-10-16 the authors added Sections 17-31. These sections record the later part of the discussion:
 
 - 17. Input Poisoning vs Weight Poisoning
 - 18. Type-Confusion and Error-Raising Clusters
@@ -25,6 +25,14 @@ On 2026-10-16 the authors added Sections 17-25. These sections record the later 
 - 23. Weight Manifest Header
 - 24. Updated Design Decisions Log
 - 25. Open Questions (updated)
+- 26. Delta Store and Weight Diffing as First-Class Operation
+- 27. Cluster Capability Tokens
+- 28. Shadow Execution for Safe Updates
+- 29. Dev vs Production Testing Environments
+- 30. Binary-Search Debugging Refinement and Dedicated Debugger Cluster
+- 31. Self-Referencing Hash Trick and Header-in-Weight Corrections
+
+A second update on 2026-10-16 added Sections 26-31, decisions D11-D16 in Section 24, new open questions in Section 25, and Figure 6.
 
 ## Files
 
