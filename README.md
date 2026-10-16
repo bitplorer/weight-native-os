@@ -42,7 +42,7 @@ A quality pass added these parts and fixed internal issues:
 - How This Differs from Existing Work (prior-work note)
 - Extended Glossary (router, capability token, delta store, shadow execution, frozen checker, manifest header, weight ID, and more)
 - Section 8.4 now resolves hash placement: the frozen checker in ROM verifies, and the artifact carries its own seal (consistent with Section 31)
-- Section 24: decisions (a)-(m) each record what, why, positives, negatives, and effect
+- Section 24: decisions (a)-(r) each record what, why, positives, negatives, and effect
 - Sections 16 and 25: each open question has a recorded position or UNDECIDED with a reason
 - 32. Next Steps: six ordered milestones with a definition of done
 
@@ -57,6 +57,15 @@ Sections 33-37 compare the design with frontier work. Each frontier source was c
 - 37. Known Unknowns and Unknown Unknowns
 
 Section 24 adds decisions (n)-(r). Section 25 adds four UNDECIDED questions. The Glossary and Appendix B have new entries.
+
+## Source corrections and verification log 2026-10-16
+
+- 38. Source Verification Log: every cited source with title, authors, venue or arXiv ID, date verified (2026-10-16), and status (VERIFIED / CORRECTED / NOT FOUND)
+- Dual-plane paper (arXiv:2606.00288): ICML attribution removed
+- FMOS (arXiv:2609.19203): PMLR 306 pages and Virtual Foundation Models added; the symbolic IR idea is credited to the discussion
+- Section 34.1: Galileo is a performance-robustness framework (PeRCs plus shielding), not a formal verifier; LDOS facts corrected
+- Added: Maya details, ProbeLogits / Anima OS, Righi (RustLab 2025), Ge et al. (arXiv:2312.03815), Karpathy posts of 2023-09-28 and 2026-03-31
+- Quality pass: Section 19.5 reconciles the frozen checker with Section 8.4; assumptions (f) and (g); new glossary entries and one new open question
 
 ## Files
 

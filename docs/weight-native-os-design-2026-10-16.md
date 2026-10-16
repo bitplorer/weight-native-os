@@ -21,12 +21,12 @@
 - Section 20 contains size estimates from the discussion. They are estimates, not measurements.
 - The prior-work note cites published research. The authors added these citations after the discussion. The discussion did not cite them.
 - Sections 17 to 31 record the later part of the same discussion. A quality pass added the assumptions, the prior-work note, the extended glossary, and Section 32.
-- Numbering: Sections 9 to 12 are not used in this record. The section numbers follow the discussion outline.
+- Numbering: Sections 9 to 12 are intentionally unused. The section numbers follow the discussion outline. Section 32 (Next Steps) comes before Sections 33 to 38 because those sections were added later.
 - Style: The text uses ASD-STE100-style controlled technical English at about 80% stringency.
 
 ## Abstract
 
-This report records a design discussion about a weight-native computing architecture. In this architecture, model weights replace executable code as the primary artifact. The report translates software engineering invariants into weight space. It describes a neural operating system that detects devices from tokenized electrical signatures. It describes weight libraries that the designer trains in isolation and composes at runtime. It requires an external oracle for verification and a fail-closed gate at runtime. It specifies hash-driven versioning and a Merkle tree over weight clusters in a frozen read-only hash region. The later sections add an input gate, error-raising clusters, a frozen checker, size estimates, activation debugging, router-based composition, manifest headers, a delta store, capability tokens, shadow execution, and a dev and production test split. It lists the design decisions, the open issues, and the next steps.
+This report records a design discussion about a weight-native computing architecture. In this architecture, model weights replace executable code as the primary artifact. The report translates software engineering invariants into weight space. It describes a neural operating system that detects devices from tokenized electrical signatures. It describes weight libraries that the designer trains in isolation and composes at runtime. It requires an external oracle for verification and a fail-closed gate at runtime. It specifies hash-driven versioning and a Merkle tree over weight clusters in a frozen read-only hash region. The later sections add an input gate, error-raising clusters, a frozen checker, size estimates, activation debugging, router-based composition, manifest headers, a delta store, capability tokens, shadow execution, and a dev and production test split. Sections 33 to 37 compare the design with frontier work: hybrid verification, a symbolic intent layer, an FMOS-style virtualization layer, the provenance security residual, and the known unknowns. Section 38 is a source verification log. It lists the design decisions, the open issues, and the next steps.
 
 ## Assumptions and Limitations
 
@@ -35,10 +35,12 @@ This report records a design discussion about a weight-native computing architec
 - (c) Outputs are probabilistic. Thus zero-one loss cannot be used at runtime without an external oracle (Sections 6.1 and 6.4).
 - (d) Storage cost is 10-100x that of a code kernel (Section 20.4).
 - (e) The router and dispatch vocabulary is a fixed registry. The system does not learn it at runtime (Section 22.5).
+- (f) Self-evolution only proposes updates. A human approves every promotion. The system never auto-promotes (Section 35.4).
+- (g) All cited sources were checked on 2026-10-16 (Section 38). The frontier field changes fast. Re-check the sources before each new revision.
 
 ## How This Differs from Existing Work
 
-Research has explored weight-based execution, neural networks that act as machines, and learned dispatch. Examples are neural program induction and differentiable interpreters. Neural Turing Machines couple a neural network to an external memory (Graves, Wayne, and Danihelka, 2014, arXiv:1410.5401). Neural Programmer-Interpreters learn to call and compose sub-programs (Reed and de Freitas, ICLR 2016, arXiv:1511.06279). A differentiable Forth interpreter lets a programmer write a program sketch with slots that training fills (Bošnjak, Rocktäschel, Naradowsky, and Riedel, ICML 2017, arXiv:1605.06640). Sparsely-gated mixture-of-experts layers use a learned gate to route each input to expert sub-networks (Shazeer et al., ICLR 2017, arXiv:1701.06538). Capability-based security comes from operating systems such as seL4 (Klein et al., SOSP 2009) and Capsicum (Watson et al., USENIX Security 2010). This report combines isolated trained clusters, a frozen external checker, capability tokens, shadow execution, and a self-referencing hash into one full OS replacement. To the knowledge of the authors, no earlier work documents this combination as a coherent system design. The authors did not do a systematic literature search. This statement is therefore a limitation, not a proof of novelty.
+Research has explored weight-based execution, neural networks that act as machines, and learned dispatch. Examples are neural program induction and differentiable interpreters. Neural Turing Machines couple a neural network to an external memory (Graves, Wayne, and Danihelka, 2014, arXiv:1410.5401). Neural Programmer-Interpreters learn to call and compose sub-programs (Reed and de Freitas, ICLR 2016, arXiv:1511.06279). A differentiable Forth interpreter lets a programmer write a program sketch with slots that training fills (Bošnjak, Rocktäschel, Naradowsky, and Riedel, ICML 2017, arXiv:1605.06640). Sparsely-gated mixture-of-experts layers use a learned gate to route each input to expert sub-networks (Shazeer et al., ICLR 2017, arXiv:1701.06538). Ge et al. map an LLM to an OS kernel, the context window to memory, external storage to a file system, hardware tools to peripheral devices, and software tools to programming libraries (Ge, Ren, Hua, Xu, Tan, and Zhang, 2023, arXiv:2312.03815). Karpathy described LLMs as the kernel process of a new operating system (X post, 2023-09-28, https://x.com/karpathy/status/1707437820045062561). In 2026 he wrote "LLM = CPU" and "Agent = operating system kernel" (X post, 2026-03-31, https://x.com/karpathy/status/2039054981719089202). These LLM-as-OS views put a language model in the kernel role. This design is different: trained weight clusters replace the executable code itself. Capability-based security comes from operating systems such as seL4 (Klein et al., SOSP 2009) and Capsicum (Watson et al., USENIX Security 2010). This report combines isolated trained clusters, a frozen external checker, capability tokens, shadow execution, and a self-referencing hash into one full OS replacement. To the knowledge of the authors, no earlier work documents this combination as a coherent system design. The authors did not do a systematic literature search. This statement is therefore a limitation, not a proof of novelty.
 
 ## Glossary
 
@@ -53,7 +55,7 @@ Research has explored weight-based execution, neural networks that act as machin
 | Capability token | A signed declaration that ships with a cluster. It declares the input types, the output types, the resource limits, and the shadow-execution tolerance (Section 27). |
 | Delta store | A store that keeps only the differences between weight versions. The hash always covers the full assembled artifact (Section 26). |
 | Shadow execution | A run of a new cluster version in parallel with the old version on the same inputs, before promotion (Section 28). |
-| Frozen checker | A small handwritten deterministic C program in ROM or in a signed firmware image. It runs before the weights load and holds the hash-verification logic (Sections 8.4 and 19). |
+| Frozen checker | A small handwritten deterministic C program in ROM or in a signed firmware image. It runs before the weights load and holds the hash-verification logic (Sections 8.4, 19.5, and 31). |
 | Manifest header | The part of the weight file that holds the weight name, the root hash, the layer count, and the per-layer hashes (Sections 23 and 31). |
 | Self-referencing hash | A hash field inside the weight artifact. The system sets the field to zero, computes the hash, and stores it in the field (Section 31.2). |
 | Weight ID | The identity of a weight artifact: its name and its root hash in the manifest header. The router uses it for registry lookup (Section 23.2). |
@@ -77,6 +79,8 @@ Research has explored weight-based execution, neural networks that act as machin
 | Merkle tree | A tree of hashes. Each leaf is the hash of one weight cluster. Each parent is the hash of its children. |
 | Activation probe | A read-only tap on the activations at a cluster boundary. |
 | Activation trace | The recorded activations of one run. It is the analog of a stack trace. |
+| Virtual Foundation Model (VFM) | In FMOS, a virtualized interface to foundation models, as a virtual machine is to hardware (Section 35). |
+| PeRC | Performance Robustness Certificate. In Galileo, a queueing-based worst-case bound on end-to-end latency. It is not a formal proof of correctness (Section 34.1). |
 | Symbolic IR | An intermediate representation that a formal verifier can check before the system lowers it to machine code (Section 33). |
 | Intent layer | A small, frozen, deterministic check between the router output and execution. It checks that the cluster-ID sequence is coherent (Section 34). |
 | Memory tiering | Hot clusters stay in fast memory. Cold clusters stay in storage (Section 35.3). |
@@ -436,6 +440,10 @@ The checker is written in C. The compiler compiles it at build time to a tiny bi
 3. On mismatch, set the error flag.
 4. On match, pass the token to the weights.
 
+### 19.5 Hash verification (consistency with Section 8.4)
+
+The frozen checker has two duties. Duty 1 is the input type check of Sections 19.1 to 19.4. Duty 2 is the hash verification of Section 8.4: before the weights load, it verifies the self-referencing hash of each artifact (Section 31). Limitation: the size estimate of Section 19.3 covers only Duty 1. A hash function adds code. The total size of the checker is UNDECIDED.
+
 ## 20. Weight-Native Kernel Size Estimate
 
 ### 20.1 Cluster sizes
@@ -707,10 +715,11 @@ These questions add to the open questions in Section 16.
 11. Who verifies the debugger cluster itself (Section 30)? Status: UNDECIDED. Why it matters: a wrong debugger cluster gives wrong logs.
 12. Who signs the manifest header, and where is the trusted reference, for example a public key or a Merkle root (Sections 8.4 and 31)? Status: UNDECIDED. Why it matters: authenticity depends on it. A self-seal alone shows only consistency.
 13. Which weights keep the state of a cluster class (Section 22.1)? Status: UNDECIDED. Why it matters: state location decides how instances stay separate.
-14. Can the golden set be poisoned, and what is the root of trust (Section 36.5)? Status: UNDECIDED. Why it matters: the golden set is the external anchor for the semantic residual. A poisoned anchor hides poisoned behavior.
-15. What is the performance cost of the IR layer on non-critical paths (Section 33)? Status: UNDECIDED. Why it matters: a high cost can make the hybrid impractical outside the critical paths.
-16. Does a move between memory tiers change the hash of a cluster (Section 35.3)? Status: UNDECIDED. Reasoning, not a decision: the hash covers the content of the complete artifact (Section 26.3), not its location. Thus a tier move that does not change the bytes probably does not change the hash. Why it matters: a hash change at each tier move would break registry lookup.
-17. Does the same key sign the golden-set ROM image and the manifest header, or a separate key (Sections 31.5 and 36.5)? Status: UNDECIDED. Why it matters: one key is a single point of compromise for both anchors.
+14. What is the total size of the frozen checker with both the type check and the hash verification (Section 19.5)? Status: UNDECIDED. Why it matters: ROM size and the audit effort depend on it.
+15. Can the golden set be poisoned, and what is the root of trust (Section 36.5)? Status: UNDECIDED. Why it matters: the golden set is the external anchor for the semantic residual. A poisoned anchor hides poisoned behavior.
+16. What is the performance cost of the IR layer on non-critical paths (Section 33)? Status: UNDECIDED. Why it matters: a high cost can make the hybrid impractical outside the critical paths.
+17. Does a move between memory tiers change the hash of a cluster (Section 35.3)? Status: UNDECIDED. Reasoning, not a decision: the hash covers the content of the complete artifact (Section 26.3), not its location. Thus a tier move that does not change the bytes probably does not change the hash. Why it matters: a hash change at each tier move would break registry lookup.
+18. Does the same key sign the golden-set ROM image and the manifest header, or a separate key (Sections 31.5 and 36.5)? Status: UNDECIDED. Why it matters: one key is a single point of compromise for both anchors.
 
 ## 26. Delta Store and Weight Diffing as First-Class Operation
 
@@ -860,11 +869,11 @@ Until now, this design uses external verification: the frozen checker, the hash,
 
 ### 33.2 Frontier gap
 
-The discussion names a frontier gap: a symbolic intermediate representation (IR) against direct machine code (discussion, 2026-10-16). The discussion calls the symbolic IR approach "FMOS style" (discussion, 2026-10-16). Limitation: the FMOS paper abstract describes memory tiers, model selection, verification, and policy enforcement. It does not describe a symbolic IR (source: Bhattacharya et al., "Position: It is Time to Virtualize Foundation Models with a Self-evolving Operating System Layer", ICML 2026 Position Paper Track, arXiv:2609.19203, https://arxiv.org/abs/2609.19203). Thus the report attributes the IR idea to the discussion, not to FMOS.
+The discussion names a frontier gap: a symbolic intermediate representation (IR) against direct machine code (discussion, 2026-10-16). The discussion calls the symbolic IR approach "FMOS style" (discussion, 2026-10-16). Limitation: the FMOS paper abstract describes memory tiers, model selection, verification, and policy enforcement. It does not describe a symbolic IR (source: Bhattacharya et al., "Position: It is Time to Virtualize Foundation Models with a Self-evolving Operating System Layer", ICML 2026 Position Paper Track, Proceedings of the 43rd International Conference on Machine Learning, PMLR 306:169503-169525, arXiv:2609.19203, https://arxiv.org/abs/2609.19203). Thus the report attributes the IR idea to the discussion, not to FMOS.
 
 ### 33.3 Related frontier work
 
-The dual-plane architecture separates a probabilistic execution plane from a deterministic control plane (source: Lin, Pao, Zhan, and Zheng, "Model-Native Computing Architecture: Envisioning Future System Architecture Through the Lens of Computer Architecture", arXiv:2606.00288, https://arxiv.org/abs/2606.00288). The discussion named this paper as an ICML 2026 paper. The authors found it on arXiv. They did not confirm the ICML 2026 venue. Maya is an AI-native kernel in Rust. It puts learned models into the scheduler and the I/O path (source: Kolaparthi, "Maya: An AI-Native Operating System Kernel", Zenodo, 2026-03-25, https://doi.org/10.5281/zenodo.19218503). Maya does not generate machine code from weights. The report cites it only as related work.
+The dual-plane architecture separates a probabilistic execution plane from a deterministic control plane (source: Lin, Pao, Zhan, and Zheng, "Model-Native Computing Architecture: Envisioning Future System Architecture Through the Lens of Computer Architecture", arXiv:2606.00288 (v3, 2026-06-24), https://arxiv.org/abs/2606.00288). This paper is a visionary survey on arXiv. It is not an ICML 2026 paper. An earlier draft of this report gave it an ICML attribution. That attribution is removed. Maya is an AI-native kernel in Rust. It puts learned models into the scheduler and the I/O path (source: Kolaparthi, "Maya: An AI-Native Operating System Kernel", Zenodo, 2026-03-25, https://doi.org/10.5281/zenodo.19218503). Maya uses a PPO reinforcement-learning scheduler. The paper reports a 109 ns inference time, 13 of 13 passed tests, more than 3 billion operations in its tests, and a boot time of under 2 seconds (same source). These are claims of the paper author. This report did not reproduce them. ProbeLogits puts LLM inference primitives into the kernel. Its implementation is Anima OS, a bare-metal x86-64 kernel in Rust (source: Son, "ProbeLogits: Kernel-Level LLM Inference Primitives for AI-Native Operating Systems", arXiv:2604.11943 (v1 2026-04-13, v3 2026-07-06), https://arxiv.org/abs/2604.11943). Righi tested AI-generated Linux schedulers with sched_ext and Rust. His talk concludes that humans can design better schedulers than AI (source: Righi (NVIDIA), "Exploring AI-powered Kernel Schedulers with Rust", talk, RustLab 2025, https://rustlab.it/talks/exploring-ai-powered-kernel-schedulers-with-rust). Maya does not generate machine code from weights. The report cites it only as related work.
 
 ### 33.4 The hybrid
 
@@ -872,7 +881,7 @@ Critical paths get a symbolic IR layer (discussion, 2026-10-16). Critical paths 
 
 ### 33.5 Risk: the IR-to-code step
 
-The translation from IR to machine code is a new unverified surface (discussion, 2026-10-16). A correct IR can still produce wrong machine code. Mitigation: the frozen checker runs on the final machine code, not on the IR (discussion, 2026-10-16). Limitation: the frozen checker checks types at the input (Section 19.4). The discussion does not state which machine-code properties it checks.
+The translation from IR to machine code is a new unverified surface (discussion, 2026-10-16). A correct IR can still produce wrong machine code. Mitigation: the frozen checker runs on the final machine code, not on the IR (discussion, 2026-10-16). Limitation: the frozen checker checks input types and artifact hashes (Sections 19.4 and 19.5). The discussion does not state which machine-code properties it checks.
 
 ### 33.6 Decision rule
 
@@ -886,7 +895,7 @@ Property-based testing checks the formal properties of the IR paths (Section 29.
 
 ### 34.1 Frontier context
 
-LDOS uses learned OS policies. It uses formal verifiers and analytical models to give feedback during training (source: Saxena, Durg, Yadalam, Chen, Dwivedula, Rossbach, and Akella, "LDOS: Toward A Learning-Directed Operating System", ACM SIGOPS blog, 2026-02-21, https://www.sigops.org/2026/ldos-toward-a-learning-directed-operating-system/). Galileo puts a shield on learned microservice controllers. The shield replaces an unsafe action with a computed safe action (source: Saxena, Vipat, Lin, Wang, Dillig, Shakkottai, and Akella, "Towards Performance Robustness for Microservices" (Galileo), NSDI 2026, https://www.usenix.org/conference/nsdi26/presentation/saxena). The discussion refers to this work as "LDOS / Galileo" (discussion, 2026-10-16).
+LDOS is an NSF Expeditions in Computing project. The lead institution is UT Austin. Aditya Akella is the lead PI and director. Christopher Rossbach is the co-director (source: NSF Expeditions in Computing award, "Learning Directed Operating System (LDOS)", lead institution The University of Texas at Austin, lead PI Aditya Akella, https://ldos.utexas.edu/). The LDOS award describes verified learning: an integration of machine learning with formal verification (same source). LDOS uses learned OS policies (source: Saxena, Durg, Yadalam, Chen, Dwivedula, Rossbach, and Akella, "LDOS: Toward A Learning-Directed Operating System", ACM SIGOPS blog, 2026-02-21, https://www.sigops.org/2026/ldos-toward-a-learning-directed-operating-system/). Its public repositories include Canopy, Galileo, and PolicySmith (https://github.com/ldos-project). Galileo is a performance-robustness framework. It is NOT a formal verifier. Galileo builds Performance Robustness Certificates (PeRCs): queueing-based worst-case bounds on end-to-end latency. It combines them with learned controllers through shielding (source: Saxena, Vipat, Lin, Wang, Dillig, Shakkottai, and Akella, "Towards Performance Robustness for Microservices" (Galileo), NSDI 2026, https://www.usenix.org/conference/nsdi26/presentation/saxena). The Galileo paper reports up to 99.4% fewer SLO violations with shielding (same source). Thus Galileo is evidence for a deterministic gate around a learned component. It is not evidence for formal verification of a learned component. The discussion refers to this work as "LDOS / Galileo" (discussion, 2026-10-16).
 
 ### 34.2 Design
 
@@ -912,7 +921,7 @@ Property-based testing checks that the intent layer rejects every impossible com
 
 ### 35.1 FMOS
 
-FMOS is a proposed system layer that virtualizes foundation-model interactions, as virtual machines abstract hardware (source: Bhattacharya et al., "Position: It is Time to Virtualize Foundation Models with a Self-evolving Operating System Layer", ICML 2026 Position Paper Track, arXiv:2609.19203, https://arxiv.org/abs/2609.19203). FMOS orchestrates knowledge across memory tiers, model selection and resource allocation, and verification and policy enforcement (same source). FMOS adapts its policies from operational experience (same source). The discussion summarizes FMOS as: stable interface, memory tiers, policy enforcement, and self-evolution (discussion, 2026-10-16).
+FMOS is a proposed system layer that virtualizes foundation-model interactions, as virtual machines abstract hardware (source: Bhattacharya et al., "Position: It is Time to Virtualize Foundation Models with a Self-evolving Operating System Layer", ICML 2026 Position Paper Track, Proceedings of the 43rd International Conference on Machine Learning, PMLR 306:169503-169525, arXiv:2609.19203, https://arxiv.org/abs/2609.19203). FMOS orchestrates knowledge across memory tiers, model selection and resource allocation, and verification and policy enforcement (same source). FMOS adapts its policies from operational experience (same source). The discussion summarizes FMOS as: stable interface, memory tiers, policy enforcement, and self-evolution (discussion, 2026-10-16).
 
 ### 35.2 Mapping
 
@@ -978,6 +987,37 @@ Regression testing with the ROM golden set runs on every update (Section 29.3). 
 ### 37.2 Unknown unknowns
 
 By definition, the authors cannot list these. The design reduces them with methods that find unexpected faults. Adversarial fuzzing and distribution-shift simulation (Section 29.2). Shadow execution on real inputs before promotion (Section 28). Human review of every promotion (Section 35.4). External review of this report against new frontier work.
+
+## 38. Source Verification Log
+
+### 38.1 Method
+
+The authors fetched each source page on 2026-10-16: arxiv.org/abs pages, Zenodo, NSF and LDOS pages, GitHub, USENIX, RustLab, and X. Status VERIFIED: the page exists and supports the citation. Status CORRECTED: the page exists, and this revision changed the citation to match it. Status NOT FOUND: the page was not found. The report does not cite it. No source in this revision has status NOT FOUND. Not cited: arXiv:2609.21957 and arXiv:2609.30830. Their abstracts do not state the provenance-versus-semantics residual of Section 36.
+
+### 38.2 Log (date verified for all rows: 2026-10-16)
+
+| Title | Authors | Venue or arXiv ID | Status |
+|---|---|---|---|
+| Model-Native Computing Architecture (dual plane) | Lin, Pao, Zhan, Zheng | arXiv:2606.00288 (v3 2026-06-24); not ICML | CORRECTED (ICML removed) |
+| Position: It is Time to Virtualize Foundation Models with a Self-evolving Operating System Layer (FMOS) | Bhattacharya et al. (10 authors) | ICML 2026 Position Track, PMLR 306:169503-169525; arXiv:2609.19203 | CORRECTED (PMLR, VFMs added; symbolic IR credited to discussion) |
+| When the Agent Becomes the Kernel: A Systematization of Security on the Path to AI-Native Operating Systems | Zhang, Sun, Shi | arXiv:2609.23700 (2026-09-20) | VERIFIED |
+| Maya: An AI-Native Operating System Kernel | Kolaparthi | Zenodo 10.5281/zenodo.19218503 (2026-03-25) | CORRECTED (details added) |
+| ProbeLogits: Kernel-Level LLM Inference Primitives for AI-Native Operating Systems | Son | arXiv:2604.11943 | VERIFIED |
+| Exploring AI-powered Kernel Schedulers with Rust (talk) | Righi | RustLab 2025 | VERIFIED |
+| Learning Directed Operating System (LDOS) | Akella (lead PI, director), Rossbach (co-director), et al. | NSF Expeditions in Computing; UT Austin | CORRECTED |
+| LDOS: Toward A Learning-Directed Operating System | Saxena, Durg, Yadalam, Chen, Dwivedula, Rossbach, Akella | ACM SIGOPS blog, 2026-02-21 | VERIFIED |
+| LDOS repositories: Canopy, Galileo, PolicySmith | LDOS project | github.com/ldos-project | VERIFIED |
+| Towards Performance Robustness for Microservices (Galileo) | Saxena, Vipat, Lin, Wang, Dillig, Shakkottai, Akella | NSDI 2026 | CORRECTED (not a formal verifier) |
+| LLM as OS, Agents as Apps: Envisioning AIOS, Agents and the AIOS-Agent Ecosystem | Ge, Ren, Hua, Xu, Tan, Zhang | arXiv:2312.03815 (2023-12-06) | VERIFIED |
+| LLMs as the kernel process of a new Operating System (X post) | Karpathy | x.com/karpathy/status/1707437820045062561 (2023-09-28) | VERIFIED |
+| LLM = CPU, Agent = operating system kernel (X post) | Karpathy | x.com/karpathy/status/2039054981719089202 (2026-03-31) | VERIFIED |
+| ASD-STE100 reference (X post, Appendix A) | Karpathy | x.com/karpathy/status/2105819303471976479 | VERIFIED |
+| Neural Turing Machines | Graves, Wayne, Danihelka | arXiv:1410.5401 | VERIFIED |
+| Neural Programmer-Interpreters | Reed, de Freitas | ICLR 2016, arXiv:1511.06279 | VERIFIED |
+| Programming with a Differentiable Forth Interpreter | Bošnjak, Rocktäschel, Naradowsky, Riedel | ICML 2017, arXiv:1605.06640 | VERIFIED |
+| Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer | Shazeer et al. | ICLR 2017, arXiv:1701.06538 | VERIFIED |
+| seL4: Formal Verification of an OS Kernel | Klein et al. | SOSP 2009 | VERIFIED |
+| Capsicum: Practical Capabilities for UNIX | Watson et al. | USENIX Security 2010 | VERIFIED |
 
 ## Appendix A. Karpathy ASD-STE100 Reference
 
