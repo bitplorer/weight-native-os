@@ -345,6 +345,189 @@ Each entry records what was decided, why, the positives, the negatives, and the 
 11. Open question: which point between precision and generalization suits each function?
 12. Open question: which tools replace the IDE, the debugger, and the profiler?
 
+## 17. Input Poisoning vs Weight Poisoning
+
+### 17.1 What the hash protects
+
+The hash protects weight integrity. If the bytes do not change, the hash matches. A hash match shows that the weights are correct.
+
+### 17.2 Input poisoning with correct weights
+
+Input poisoning is possible even with correct weights. An attacker crafts inputs outside the training distribution. These inputs cause wrong outputs. The system does not crash. The hash cannot detect this attack.
+
+### 17.3 Defense
+
+Runtime input distribution monitors are the defense. Confidence thresholds are also part of the defense.
+
+### 17.4 Two separate layers
+
+The design uses two separate layers. The hash guards the weights. The input gate guards the model.
+
+## 18. Type-Confusion and Error-Raising Clusters
+
+### 18.1 Type-confusion attack
+
+Addition of a float and a string is a type-confusion attack.
+
+### 18.2 Error-raising clusters
+
+Train clusters to emit error tokens or machine code on incompatible inputs. Example: train the add cluster to reject string plus float.
+
+### 18.3 Confidence rule
+
+The model can show low confidence when it handles an input. If the confidence or probability drops below 50%, the cluster emits an error code. This rule is fail-closed. The cluster does not guess.
+
+### 18.4 Drift of the error boundary
+
+The error boundary itself is a learned surface. A learned surface can drift. Drift causes false rejects and false accepts. Thus the error boundary still needs pinning.
+
+## 19. Frozen Checker
+
+### 19.1 Definition
+
+The frozen checker is a small, handwritten, deterministic program. It stays outside the weights. It is not weight-based. Weights are probabilistic. A safety gate cannot tolerate even 1% error.
+
+### 19.2 Location and boot order
+
+The frozen checker is hosted in ROM or in a signed firmware image. It executes before the weights load. This order is like BIOS or secure boot.
+
+### 19.3 Build
+
+The checker is written in C. The compiler compiles it at build time to a tiny binary. The source is about 20-30 lines. The binary is about 1-4 KB. No GCC exists at runtime.
+
+### 19.4 Runtime steps
+
+1. Read the input token.
+2. Match the token against the expected type.
+3. On mismatch, set the error flag.
+4. On match, pass the token to the weights.
+
+## 20. Weight-Native Kernel Size Estimate
+
+### 20.1 Cluster sizes
+
+The table gives the size of one cluster at four scales. Sizes are for FP16.
+
+| Cluster | Layers | Model dim (d) | FF dim | Parameters | Size (FP16) |
+|---|---|---|---|---|---|
+| Tiny | 2 | 256 | 512 | 17.4M | 35 MB |
+| Small | 4 | 512 | 1024 | 41.2M | 82 MB |
+| Medium | 8 | 768 | 2048 | 93.2M | 186 MB |
+| Large | 12 | 1024 | 4096 | 216.5M | 433 MB |
+
+### 20.2 Full OS estimate
+
+The estimate uses 8 OS services. Each service is one tiny cluster.
+
+| Configuration | Parameters | FP16 | FP8 | 4-bit |
+|---|---|---|---|---|
+| 8 OS services x tiny cluster | 139M | 279 MB | 139 MB | 70 MB |
+
+### 20.3 Comparison with code kernels
+
+| System | Source size | Compiled size |
+|---|---|---|
+| Linux kernel v6.x | ~30M LOC | 10-20 MB |
+| xv6-like minimal kernel | ~10K LOC | ~1 MB |
+| Frozen checker | ~20-30 lines | ~1-4 KB |
+
+### 20.4 Trade-off
+
+Storage is 10-100x heavier. Code complexity is near zero.
+
+### 20.5 Third dimension: debugging
+
+Debugging complexity does not disappear. It moves into the weights. Engineers read activation traces instead of stack traces.
+
+## 21. Activation Breakpoints and Debugging
+
+### 21.1 Activation breakpoint
+
+An activation breakpoint halts the forward pass at a cluster. The granularity is coarse compared to instruction-level breakpoints. But the full state is visible: input, output, and weight values. This is like registers and locals in gdb.
+
+### 21.2 Replay
+
+The real difficulty is replay, not stepping. Randomness and accumulated state make replay hard.
+
+### 21.3 Binary search debugging
+
+Halt at a layer. If the output is correct, the bug is in the forward layers. If the output is wrong, the bug is in the backward layers. Repeat to narrow down the bug.
+
+### 21.4 Debugger cluster
+
+A dedicated debugger cluster receives the activation outputs. It does per-layer logging. It does context-aware logging. Context-aware logging records which context has which activation.
+
+### 21.5 Parallel complexity
+
+Debugging complexity becomes parallel, not sequential. This follows the microservices observability pattern. The pattern uses per-component logs, trace IDs, and narrow-down.
+
+## 22. Cluster Classes and Dynamic Composition
+
+### 22.1 Functions and objects
+
+Primitive clusters are functions. Cluster classes are objects. A cluster class keeps state and behavior in weights.
+
+### 22.2 Instantiation
+
+Instantiation does NOT require new weight snapshots. A Fibonacci class is a routing pattern over the add and store clusters. It is not a set of new weights.
+
+### 22.3 Dispatch weights
+
+Dynamic composition uses dispatch weights, not weight swapping. A small router cluster takes a task, for example Fibonacci. The router outputs a sequence of primitive cluster IDs: add, add, store, loop. Each primitive runs. Its output returns to the router. The router decides the next step.
+
+### 22.4 Call graph in weights
+
+The call graph is encoded in weights. Today's branch instructions become router activations.
+
+### 22.5 Router output
+
+The router outputs structured IDs from a fixed vocabulary. The vocabulary is the cluster registry, like an opcode table. The router is trained on task-to-sequence pairs. The router does not do token generation.
+
+## 23. Weight Manifest Header
+
+### 23.1 Header contents
+
+Today, bytecode is sent with a header. Weights also get a header. The header contains the weight name, the root hash, the layer count, and the per-layer hashes. The header is small: about hundreds of bytes per cluster.
+
+### 23.2 Registry lookup
+
+The router finds clusters by reading headers. It matches the hash or the name. This is a registry lookup. It is the analog of a bytecode import table. The hash enables a direct index. No linear scan is necessary.
+
+### 23.3 Self-verified header
+
+The header is PART of the weight file. A change to the header breaks the hash. Thus the header is self-verified.
+
+### 23.4 Self-referencing hash
+
+1. Set the hash field to zero.
+2. Compute the hash.
+3. Store the result in the hash field.
+To verify, repeat the steps and compare.
+Use a length-extension-resistant hash, for example SHA-3.
+
+## 24. Updated Design Decisions Log
+
+This log records the decisions from the later part of the discussion. It extends Section 15.
+
+| ID | Decision | Section |
+|---|---|---|
+| a | Input gate separate from hash layer | 17 |
+| b | Error-raising as trained cluster behavior with 50% confidence threshold | 18 |
+| c | Frozen checker in ROM/signed firmware, C-compiled, outside weights | 19 |
+| d | Weight-native kernel size trade-off accepted (storage up, code down) | 20 |
+| e | Activation breakpoints + binary search + debugger cluster for debugging | 21 |
+| f | Dispatch weights for dynamic cluster composition | 22 |
+| g | Weight manifest header with self-referencing hash | 23 |
+
+## 25. Open Questions (updated)
+
+These questions add to the open questions in Section 16.
+
+1. Does the frozen checker need its own hash or signing?
+2. Can router dispatch weights themselves be versioned and hashed?
+3. How can training make error boundaries without false rejects?
+4. Can cluster classes share primitive weights (parameter sharing) to reduce the 279 MB footprint?
+
 ## Appendix A. Karpathy ASD-STE100 Reference
 
 - Andrej Karpathy posted on X on 2026-10-02 at 00:37 UTC (06:07 IST). URL: https://x.com/karpathy/status/2105819303471976479.

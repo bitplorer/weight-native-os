@@ -12,6 +12,20 @@ In this architecture, model weights replace executable code as the primary artif
 
 The text uses ASD-STE100-style controlled technical English at about 80% stringency.
 
+## Update 2026-10-16
+
+On 2026-10-16 the authors added Sections 17-25. These sections record the later part of the discussion:
+
+- 17. Input Poisoning vs Weight Poisoning
+- 18. Type-Confusion and Error-Raising Clusters
+- 19. Frozen Checker
+- 20. Weight-Native Kernel Size Estimate
+- 21. Activation Breakpoints and Debugging
+- 22. Cluster Classes and Dynamic Composition
+- 23. Weight Manifest Header
+- 24. Updated Design Decisions Log
+- 25. Open Questions (updated)
+
 ## Files
 
 - [PDF report](docs/weight-native-os-design-2026-10-16.pdf)
