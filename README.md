@@ -46,6 +46,18 @@ A quality pass added these parts and fixed internal issues:
 - Sections 16 and 25: each open question has a recorded position or UNDECIDED with a reason
 - 32. Next Steps: six ordered milestones with a definition of done
 
+## Frontier comparison 2026-10-16
+
+Sections 33-37 compare the design with frontier work. Each frontier source was checked before citation:
+
+- 33. Hybrid Verification Architecture
+- 34. Neurosymbolic Intent Layer
+- 35. FMOS Virtualization Layer
+- 36. Provenance Security Residual
+- 37. Known Unknowns and Unknown Unknowns
+
+Section 24 adds decisions (n)-(r). Section 25 adds four UNDECIDED questions. The Glossary and Appendix B have new entries.
+
 ## Files
 
 - [PDF report](docs/weight-native-os-design-2026-10-16.pdf)

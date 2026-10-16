@@ -77,6 +77,10 @@ Research has explored weight-based execution, neural networks that act as machin
 | Merkle tree | A tree of hashes. Each leaf is the hash of one weight cluster. Each parent is the hash of its children. |
 | Activation probe | A read-only tap on the activations at a cluster boundary. |
 | Activation trace | The recorded activations of one run. It is the analog of a stack trace. |
+| Symbolic IR | An intermediate representation that a formal verifier can check before the system lowers it to machine code (Section 33). |
+| Intent layer | A small, frozen, deterministic check between the router output and execution. It checks that the cluster-ID sequence is coherent (Section 34). |
+| Memory tiering | Hot clusters stay in fast memory. Cold clusters stay in storage (Section 35.3). |
+| Provenance residual | The semantic risk that provenance checks cannot remove: correct bytes with wrong learned behavior (Section 36). |
 
 ## 1. Motivation and Core Thesis
 
@@ -537,7 +541,7 @@ Use a length-extension-resistant hash, for example SHA-3.
 
 ## 24. Updated Design Decisions Log
 
-This log records the decisions from the later part of the discussion. It extends Section 15. Items (a) to (g) record the decisions of Sections 17 to 23. Items (h) to (m) record the decisions of Sections 26 to 31. After the summary table, each item records what was decided, why, the positives, the negatives, and the effect on the program, as in Section 15. Where the discussion gives no content for a field, the field says: Not stated in discussion.
+This log records the decisions from the later part of the discussion. It extends Section 15. Items (a) to (g) record the decisions of Sections 17 to 23. Items (h) to (m) record the decisions of Sections 26 to 31. Items (n) to (r) record the decisions of Sections 33 to 36. After the summary table, each item records what was decided, why, the positives, the negatives, and the effect on the program, as in Section 15. Where the discussion gives no content for a field, the field says: Not stated in discussion.
 
 | ID | Decision | Section |
 |---|---|---|
@@ -554,6 +558,11 @@ This log records the decisions from the later part of the discussion. It extends
 | k | Dev and production use separate test regimes. | 29 |
 | l | Debugging uses binary search at cluster boundaries and a dedicated debugger cluster. | 30 |
 | m | The weight file uses a self-referencing hash, and the header is part of the weight file. | 31 |
+| n | Hybrid verification: formalizable critical paths use a symbolic IR and a formal verifier; other paths use the external checker; the frozen checker checks the final machine code. | 33 |
+| o | Intent layer: frozen, small, not weight-based; it checks the coherence of the router sequence against capabilities. | 34 |
+| p | FMOS-style virtualization mapping with memory tiering: hot clusters in fast memory, cold clusters in storage. | 35 |
+| q | Self-evolution: a cluster proposes, shadow execution validates, a human approves. Never auto-promote. | 35 |
+| r | The provenance residual is acknowledged. The golden set is stored in ROM, signed separately, as the external anchor. | 36 |
 
 ### (a) Input gate separate from hash layer
 
@@ -646,6 +655,41 @@ This log records the decisions from the later part of the discussion. It extends
 - **Negatives:** The atomic recompute race of Section 8.2 still needs an atomic update.
 - **Effect on the program:** The signed-header requirement stands. See Sections 23 and 31.
 
+### (n) Hybrid verification: formalizable critical paths use a symbolic IR and a formal verifier; other paths use the external checker; the frozen checker checks the final machine code.
+
+- **Why:** Some behavior is formalizable and some is not. The IR-to-code step is a new unverified surface (Section 33, discussion 2026-10-16).
+- **Positives:** Formal guarantees where they are possible. The frozen checker covers the translation step.
+- **Negatives:** A new IR layer and a new translation step to maintain. The performance cost is not known.
+- **Effect on the program:** Each path needs a classification: formalizable, not formalizable, or both.
+
+### (o) Intent layer: frozen, small, not weight-based; it checks the coherence of the router sequence against capabilities.
+
+- **Why:** The hash and the capability do not check that a sequence is coherent (Section 34, discussion 2026-10-16).
+- **Positives:** Impossible compositions stop before dispatch. Deterministic.
+- **Negatives:** Not stated in discussion.
+- **Effect on the program:** The router output passes three checks: hash, capability, and intent.
+
+### (p) FMOS-style virtualization mapping with memory tiering: hot clusters in fast memory, cold clusters in storage.
+
+- **Why:** The virtualization model maps onto existing parts of this design (Section 35, discussion 2026-10-16; arXiv:2609.19203).
+- **Positives:** Known terms for each part. Memory use follows demand.
+- **Negatives:** Not stated in discussion.
+- **Effect on the program:** The runtime needs a tier manager. Section 25 asks if a tier move changes the hash.
+
+### (q) Self-evolution: a cluster proposes, shadow execution validates, a human approves. Never auto-promote.
+
+- **Why:** Self-evolution conflicts with frozen contracts (Section 35.4, discussion 2026-10-16).
+- **Positives:** Updates stay possible. Frozen contracts stay in force until a human approves.
+- **Negatives:** Each promotion needs human time.
+- **Effect on the program:** The promotion path always contains a human approval step.
+
+### (r) The provenance residual is acknowledged. The golden set is stored in ROM, signed separately, as the external anchor.
+
+- **Why:** Provenance checks cannot catch wrong learned behavior in correct bytes (Section 36; arXiv:2609.23700).
+- **Positives:** The report states the limit of weight-native mechanisms. The golden set gets a protected location.
+- **Negatives:** A ROM golden set needs its own update process. The root of trust is UNDECIDED.
+- **Effect on the program:** Every update runs regression against the ROM golden set.
+
 ## 25. Open Questions (updated)
 
 These questions add to the open questions in Section 16.
@@ -663,6 +707,10 @@ These questions add to the open questions in Section 16.
 11. Who verifies the debugger cluster itself (Section 30)? Status: UNDECIDED. Why it matters: a wrong debugger cluster gives wrong logs.
 12. Who signs the manifest header, and where is the trusted reference, for example a public key or a Merkle root (Sections 8.4 and 31)? Status: UNDECIDED. Why it matters: authenticity depends on it. A self-seal alone shows only consistency.
 13. Which weights keep the state of a cluster class (Section 22.1)? Status: UNDECIDED. Why it matters: state location decides how instances stay separate.
+14. Can the golden set be poisoned, and what is the root of trust (Section 36.5)? Status: UNDECIDED. Why it matters: the golden set is the external anchor for the semantic residual. A poisoned anchor hides poisoned behavior.
+15. What is the performance cost of the IR layer on non-critical paths (Section 33)? Status: UNDECIDED. Why it matters: a high cost can make the hybrid impractical outside the critical paths.
+16. Does a move between memory tiers change the hash of a cluster (Section 35.3)? Status: UNDECIDED. Reasoning, not a decision: the hash covers the content of the complete artifact (Section 26.3), not its location. Thus a tier move that does not change the bytes probably does not change the hash. Why it matters: a hash change at each tier move would break registry lookup.
+17. Does the same key sign the golden-set ROM image and the manifest header, or a separate key (Sections 31.5 and 36.5)? Status: UNDECIDED. Why it matters: one key is a single point of compromise for both anchors.
 
 ## 26. Delta Store and Weight Diffing as First-Class Operation
 
@@ -804,6 +852,133 @@ These milestones are ordered. Each milestone has a definition of done. They repl
 5. **Implement the delta store and the self-referencing hash.** Done when every stored delta reproduces a byte-identical full artifact whose self-referencing hash verifies.
 6. **Run adversarial fuzzing against the error boundary.** Done when a fuzzing report lists the false-reject and false-accept rates of each cluster error boundary.
 
+## 33. Hybrid Verification Architecture
+
+### 33.1 Current approach
+
+Until now, this design uses external verification: the frozen checker, the hash, and the capability (discussion, 2026-10-16). Until now, the clusters generate machine code directly (discussion, 2026-10-16).
+
+### 33.2 Frontier gap
+
+The discussion names a frontier gap: a symbolic intermediate representation (IR) against direct machine code (discussion, 2026-10-16). The discussion calls the symbolic IR approach "FMOS style" (discussion, 2026-10-16). Limitation: the FMOS paper abstract describes memory tiers, model selection, verification, and policy enforcement. It does not describe a symbolic IR (source: Bhattacharya et al., "Position: It is Time to Virtualize Foundation Models with a Self-evolving Operating System Layer", ICML 2026 Position Paper Track, arXiv:2609.19203, https://arxiv.org/abs/2609.19203). Thus the report attributes the IR idea to the discussion, not to FMOS.
+
+### 33.3 Related frontier work
+
+The dual-plane architecture separates a probabilistic execution plane from a deterministic control plane (source: Lin, Pao, Zhan, and Zheng, "Model-Native Computing Architecture: Envisioning Future System Architecture Through the Lens of Computer Architecture", arXiv:2606.00288, https://arxiv.org/abs/2606.00288). The discussion named this paper as an ICML 2026 paper. The authors found it on arXiv. They did not confirm the ICML 2026 venue. Maya is an AI-native kernel in Rust. It puts learned models into the scheduler and the I/O path (source: Kolaparthi, "Maya: An AI-Native Operating System Kernel", Zenodo, 2026-03-25, https://doi.org/10.5281/zenodo.19218503). Maya does not generate machine code from weights. The report cites it only as related work.
+
+### 33.4 The hybrid
+
+Critical paths get a symbolic IR layer (discussion, 2026-10-16). Critical paths are arithmetic, memory-safety bounds, and type contracts (discussion, 2026-10-16). A formal verifier checks the IR before the system lowers it to machine code (discussion, 2026-10-16). Non-formalizable paths stay on external verification (discussion, 2026-10-16). Non-formalizable paths are scheduling policy, device handshake, and real-time constraints (discussion, 2026-10-16).
+
+### 33.5 Risk: the IR-to-code step
+
+The translation from IR to machine code is a new unverified surface (discussion, 2026-10-16). A correct IR can still produce wrong machine code. Mitigation: the frozen checker runs on the final machine code, not on the IR (discussion, 2026-10-16). Limitation: the frozen checker checks types at the input (Section 19.4). The discussion does not state which machine-code properties it checks.
+
+### 33.6 Decision rule
+
+If the behavior is formalizable, use the IR and a formal verifier (discussion, 2026-10-16). If the behavior is not formalizable, use the external deterministic checker (discussion, 2026-10-16). If a path crosses both, use both (discussion, 2026-10-16).
+
+### 33.7 Tests and docs
+
+Property-based testing checks the formal properties of the IR paths (Section 29.4). Differential testing compares the machine code with the IR semantics on the same inputs (Section 29.4). Regression testing with the golden set covers the external-verification paths (Section 29.3). Docs: Sections 6, 19, and 33. Decision (n).
+
+## 34. Neurosymbolic Intent Layer
+
+### 34.1 Frontier context
+
+LDOS uses learned OS policies. It uses formal verifiers and analytical models to give feedback during training (source: Saxena, Durg, Yadalam, Chen, Dwivedula, Rossbach, and Akella, "LDOS: Toward A Learning-Directed Operating System", ACM SIGOPS blog, 2026-02-21, https://www.sigops.org/2026/ldos-toward-a-learning-directed-operating-system/). Galileo puts a shield on learned microservice controllers. The shield replaces an unsafe action with a computed safe action (source: Saxena, Vipat, Lin, Wang, Dillig, Shakkottai, and Akella, "Towards Performance Robustness for Microservices" (Galileo), NSDI 2026, https://www.usenix.org/conference/nsdi26/presentation/saxena). The discussion refers to this work as "LDOS / Galileo" (discussion, 2026-10-16).
+
+### 34.2 Design
+
+A small symbolic intent layer sits between the router output and execution (discussion, 2026-10-16). It checks the cluster-ID sequence of the router against the declared capabilities before dispatch (discussion, 2026-10-16).
+
+### 34.3 A second gate
+
+The hash proves identity (Section 27.3). The capability proves permission (Section 27.3). The intent layer proves that the sequence is coherent (discussion, 2026-10-16). A coherent sequence contains no impossible composition, for example a divide-by-zero path (discussion, 2026-10-16).
+
+### 34.4 Frozen and deterministic
+
+The intent layer is small and frozen, like the frozen checker (discussion, 2026-10-16). It is not weight-based (discussion, 2026-10-16). The reason is determinism: a safety gate cannot tolerate even 1% error (Section 19.1).
+
+### 34.5 Limitation
+
+The discussion does not define the coherence rules. The discussion does not say how the intent layer finds a divide-by-zero path before execution, when the divisor is a runtime value.
+
+### 34.6 Tests and docs
+
+Property-based testing checks that the intent layer rejects every impossible composition in a generated set (Section 29.4). Adversarial fuzzing generates router sequences that try to pass the layer (Section 29.2). Docs: Sections 22, 27, and 34. Decision (o).
+
+## 35. FMOS Virtualization Layer
+
+### 35.1 FMOS
+
+FMOS is a proposed system layer that virtualizes foundation-model interactions, as virtual machines abstract hardware (source: Bhattacharya et al., "Position: It is Time to Virtualize Foundation Models with a Self-evolving Operating System Layer", ICML 2026 Position Paper Track, arXiv:2609.19203, https://arxiv.org/abs/2609.19203). FMOS orchestrates knowledge across memory tiers, model selection and resource allocation, and verification and policy enforcement (same source). FMOS adapts its policies from operational experience (same source). The discussion summarizes FMOS as: stable interface, memory tiers, policy enforcement, and self-evolution (discussion, 2026-10-16).
+
+### 35.2 Mapping
+
+| This design | Virtualization analog | Source |
+|---|---|---|
+| Cluster | VM guest | discussion, 2026-10-16 |
+| Router and cluster registry | Hypervisor | discussion, 2026-10-16 |
+| Manifest header | VM descriptor | discussion, 2026-10-16 |
+| Delta store | Snapshotting | discussion, 2026-10-16 |
+| Shadow execution | Live-migration testing | discussion, 2026-10-16 |
+
+### 35.3 What FMOS adds
+
+Memory tiering: hot clusters stay in fast memory. Cold clusters stay in storage (discussion, 2026-10-16). Policy enforcement becomes a first-class layer (discussion, 2026-10-16). Self-evolution hooks: clusters propose their own updates. Shadow execution gates each proposal (discussion, 2026-10-16).
+
+### 35.4 Tension and resolution
+
+Self-evolution conflicts with frozen contracts (Section 4.2) (discussion, 2026-10-16). Resolution: evolution proposes. Shadow execution validates (Section 28). A human approves promotion (discussion, 2026-10-16). The system never auto-promotes (discussion, 2026-10-16).
+
+### 35.5 Tests and docs
+
+Shadow execution with the capability tolerance tests each proposed update (Section 28.3). Regression testing with the golden set runs before human approval (Section 29.3). Differential testing checks that a tier move does not change cluster output (Section 29.4). Docs: Sections 26, 28, and 35. Decisions (p) and (q).
+
+## 36. Provenance Security Residual
+
+### 36.1 Source
+
+A crossing that a mediator judges over provenance admits a deterministic check (source: Zhang, Sun, and Shi, "When the Agent Becomes the Kernel: A Systematization of Security on the Path to AI-Native Operating Systems", arXiv:2609.23700, https://arxiv.org/abs/2609.23700). A crossing that a mediator judges over content semantics does not. It leaves an irreducible residual where inputs and actions are not restricted in advance to an enumerated set (same source).
+
+### 36.2 Application to this design
+
+The hash, the capability, and the intent layer close the provenance side (discussion, 2026-10-16). The residual is semantic: correct bytes with wrong learned behavior (discussion, 2026-10-16). The cause is poisoned training data, not poisoned weights (discussion, 2026-10-16). The hash cannot catch it (Section 14.1).
+
+### 36.3 Mitigations
+
+Golden-set regression (Section 29) (discussion, 2026-10-16). Distribution monitoring (Sections 6.7 and 17) (discussion, 2026-10-16). Shadow execution (Section 28) (discussion, 2026-10-16). These mitigations lower the residual. They do not remove it.
+
+### 36.4 Irreducible residual
+
+No weight-native mechanism can remove this residual (discussion, 2026-10-16). It needs the external human-verified layer (discussion, 2026-10-16).
+
+### 36.5 Golden-set poisoning
+
+Open point: an attacker can try to poison the golden set itself (discussion, 2026-10-16). Proposed mitigation: store the golden set in ROM with the frozen checker, signed separately (discussion, 2026-10-16). Section 25 records the root of trust as UNDECIDED.
+
+### 36.6 Tests and docs
+
+Regression testing with the ROM golden set runs on every update (Section 29.3). Distribution-shift simulation measures how far the mitigations reach (Section 29.2). Docs: Sections 14.1, 17, 29, and 36. Decision (r).
+
+## 37. Known Unknowns and Unknown Unknowns
+
+### 37.1 Known unknowns
+
+- These are gaps that the authors know about.
+1. The coherence rules of the intent layer (Section 34.5).
+2. The machine-code properties that the frozen checker verifies after IR lowering (Section 33.5).
+3. The root of trust for the golden set and the header keys (Section 25).
+4. The performance cost of the IR layer (Section 25).
+5. The derivation of the size estimates (Section 20.1).
+6. The rate of false rejects and false accepts at each error boundary (Section 32, milestone 6).
+7. The coverage metric for the input space (Section 16).
+
+### 37.2 Unknown unknowns
+
+By definition, the authors cannot list these. The design reduces them with methods that find unexpected faults. Adversarial fuzzing and distribution-shift simulation (Section 29.2). Shadow execution on real inputs before promotion (Section 28). Human review of every promotion (Section 35.4). External review of this report against new frontier work.
+
 ## Appendix A. Karpathy ASD-STE100 Reference
 
 - Andrej Karpathy posted on X on 2026-10-02 at 00:37 UTC (06:07 IST). URL: https://x.com/karpathy/status/2105819303471976479.
@@ -883,3 +1058,12 @@ These milestones are ordered. Each milestone has a definition of done. They repl
 65. Dev and production use separate test regimes (Section 29).
 66. A debugger cluster does context-aware logging (Section 30).
 67. The self-referencing hash zeroes its field before computation (Section 31).
+68. Critical paths use a symbolic IR and a formal verifier; other paths use the external checker (Section 33).
+69. The frozen checker checks the final machine code after IR lowering (Section 33).
+70. A frozen intent layer checks the coherence of router sequences (Section 34).
+71. Clusters, router, header, delta store, and shadow execution map onto virtualization concepts (Section 35).
+72. Memory tiering keeps hot clusters in fast memory (Section 35).
+73. Self-evolution proposals need shadow validation and human approval (Section 35).
+74. Correct bytes with wrong learned behavior is an irreducible semantic residual (Section 36).
+75. The golden set is stored in ROM, signed separately (Section 36).
+76. The report lists known unknowns and methods for unknown unknowns (Section 37).
