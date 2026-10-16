@@ -32,7 +32,7 @@ On 2026-10-16 the authors added Sections 17-31. These sections record the later 
 - 30. Binary-Search Debugging Refinement and Dedicated Debugger Cluster
 - 31. Self-Referencing Hash Trick and Header-in-Weight Corrections
 
-A second update on 2026-10-16 added Sections 26-31, decisions D11-D16 in Section 24, new open questions in Section 25, and Figure 6.
+A second update on 2026-10-16 added Sections 26-31, decisions (h)-(m) in Section 24, new open questions in Section 25, and Figure 6.
 
 ## Files
 
