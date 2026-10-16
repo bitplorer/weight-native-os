@@ -17,19 +17,49 @@
 
 - Context: This report records a voice design discussion on 2026-10-16.
 - Source: No transcript exists. The authors reconstructed this report from the discussion outline.
-- The report contains no quotes, metrics, benchmarks, or citations from the discussion.
+- The report contains no quotes or benchmarks from the discussion.
+- Section 20 contains size estimates from the discussion. They are estimates, not measurements.
+- The prior-work note cites published research. The authors added these citations after the discussion. The discussion did not cite them.
+- Sections 17 to 31 record the later part of the same discussion. A quality pass added the assumptions, the prior-work note, the extended glossary, and Section 32.
 - Numbering: Sections 9 to 12 are not used in this record. The section numbers follow the discussion outline.
 - Style: The text uses ASD-STE100-style controlled technical English at about 80% stringency.
 
 ## Abstract
 
-This report records a design discussion about a weight-native computing architecture. In this architecture, model weights replace executable code as the primary artifact. The report translates software engineering invariants into weight space. It describes a neural operating system that detects devices from tokenized electrical signatures. It describes weight libraries that the designer trains in isolation and composes at runtime. It requires an external oracle for verification and a fail-closed gate at runtime. It specifies hash-driven versioning and a Merkle tree over weight clusters in a frozen read-only hash region. It lists the design decisions, the open issues, and the next steps.
+This report records a design discussion about a weight-native computing architecture. In this architecture, model weights replace executable code as the primary artifact. The report translates software engineering invariants into weight space. It describes a neural operating system that detects devices from tokenized electrical signatures. It describes weight libraries that the designer trains in isolation and composes at runtime. It requires an external oracle for verification and a fail-closed gate at runtime. It specifies hash-driven versioning and a Merkle tree over weight clusters in a frozen read-only hash region. The later sections add an input gate, error-raising clusters, a frozen checker, size estimates, activation debugging, router-based composition, manifest headers, a delta store, capability tokens, shadow execution, and a dev and production test split. It lists the design decisions, the open issues, and the next steps.
+
+## Assumptions and Limitations
+
+- (a) This report is a design proposal. It is not an implemented system.
+- (b) No trained weight clusters exist yet. All cluster behavior in this report is hypothetical.
+- (c) Outputs are probabilistic. Thus zero-one loss cannot be used at runtime without an external oracle (Sections 6.1 and 6.4).
+- (d) Storage cost is 10-100x that of a code kernel (Section 20.4).
+- (e) The router and dispatch vocabulary is a fixed registry. The system does not learn it at runtime (Section 22.5).
+
+## How This Differs from Existing Work
+
+Research has explored weight-based execution, neural networks that act as machines, and learned dispatch. Examples are neural program induction and differentiable interpreters. Neural Turing Machines couple a neural network to an external memory (Graves, Wayne, and Danihelka, 2014, arXiv:1410.5401). Neural Programmer-Interpreters learn to call and compose sub-programs (Reed and de Freitas, ICLR 2016, arXiv:1511.06279). A differentiable Forth interpreter lets a programmer write a program sketch with slots that training fills (Bošnjak, Rocktäschel, Naradowsky, and Riedel, ICML 2017, arXiv:1605.06640). Sparsely-gated mixture-of-experts layers use a learned gate to route each input to expert sub-networks (Shazeer et al., ICLR 2017, arXiv:1701.06538). Capability-based security comes from operating systems such as seL4 (Klein et al., SOSP 2009) and Capsicum (Watson et al., USENIX Security 2010). This report combines isolated trained clusters, a frozen external checker, capability tokens, shadow execution, and a self-referencing hash into one full OS replacement. To the knowledge of the authors, no earlier work documents this combination as a coherent system design. The authors did not do a systematic literature search. This statement is therefore a limitation, not a proof of novelty.
 
 ## Glossary
 
 | Term | Definition |
 |---|---|
-| Weight cluster | A named group of model weights that implements one function. |
+| Cluster (weight cluster) | A named group of model weights that implements one function (Sections 4.1 and 4.2). |
+| Primitive cluster | A cluster that implements one basic function, for example add or store. It is the analog of a function (Section 22.1). |
+| Higher-order cluster | A function that the router makes from primitive clusters in sequence. The report also calls it a cluster class. It needs no new weights (Section 22.2). |
+| Router | A small cluster that takes a task and outputs a sequence of primitive cluster IDs from the cluster registry (Sections 22.3 to 22.5). |
+| Dispatch weights | The router weights that encode the call graph (Section 22.4). |
+| Cluster registry | The fixed vocabulary of cluster IDs that the router can output. It is the analog of an opcode table (Section 22.5). |
+| Capability token | A signed declaration that ships with a cluster. It declares the input types, the output types, the resource limits, and the shadow-execution tolerance (Section 27). |
+| Delta store | A store that keeps only the differences between weight versions. The hash always covers the full assembled artifact (Section 26). |
+| Shadow execution | A run of a new cluster version in parallel with the old version on the same inputs, before promotion (Section 28). |
+| Frozen checker | A small handwritten deterministic C program in ROM or in a signed firmware image. It runs before the weights load and holds the hash-verification logic (Sections 8.4 and 19). |
+| Manifest header | The part of the weight file that holds the weight name, the root hash, the layer count, and the per-layer hashes (Sections 23 and 31). |
+| Self-referencing hash | A hash field inside the weight artifact. The system sets the field to zero, computes the hash, and stores it in the field (Section 31.2). |
+| Weight ID | The identity of a weight artifact: its name and its root hash in the manifest header. The router uses it for registry lookup (Section 23.2). |
+| Error boundary | The learned surface where a cluster changes from a result to an error code (Section 18.4). |
+| Golden input set | A set of known input-output pairs that humans verify (Section 29.2). |
+| Binary-search debugging | A method that halts the forward pass at a layer or cluster boundary and checks the output. Each check halves the region that contains the fault (Sections 21.3 and 30.2). |
 | Weight library | A set of weight clusters with frozen contracts. |
 | Frozen contract | The fixed input and output behavior of a weight cluster. Training does not change it. |
 | Composition | The connection of weight clusters at runtime to make a larger function. |
@@ -70,7 +100,7 @@ The next step trains a model end to end on code tasks. The model produces the re
 
 ### 2.3 Weights as data, not program
 
-In the target design, weights are data. The inference engine is the only program. A change of behavior is a change of data. It is not a change of code.
+In the target design, weights are data. The inference engine is the only general program. A change of behavior is a change of data. It is not a change of code. Section 19 adds one more small fixed program: the frozen checker.
 
 ### 2.4 VM-as-weights variant
 
@@ -80,7 +110,7 @@ A variant puts a virtual machine into the weights. The weights then interpret a 
 
 ### 3.1 Weights as OS
 
-The weights implement the operating system functions. The inference engine is the only executable code on the device.
+The weights implement the operating system functions. The inference engine is the only general executable code on the device. The frozen checker of Section 19 is a second, small, fixed program. It runs before the weights load.
 
 ![Figure 1. Neural OS stack: hardware signatures to tokenizer to inference loader to weight clusters.](../figures/fig1.png)
 
@@ -166,7 +196,7 @@ Many functions have a correct answer or a wrong answer. Zero-one loss gives no g
 
 ### 6.5 Confidence thresholds
 
-Each output has a confidence value. The gate rejects output below the confidence threshold.
+Each output has a confidence value. The gate rejects output below the confidence threshold. Section 18.3 sets the threshold at 50% for error-raising clusters.
 
 ### 6.6 Fail-closed runtime gates
 
@@ -174,13 +204,13 @@ The gate blocks output when a check fails. The system does not pass unchecked ou
 
 ### 6.7 Input distribution monitors
 
-The monitor compares each input with the training distribution. The monitor flags input outside the distribution. The gate then blocks it.
+The monitor compares each input with the training distribution. The monitor flags input outside the distribution. The gate then blocks it. Section 17 makes this input gate a layer separate from the hash.
 
 ## 7. Versioning
 
 ### 7.1 Hash-driven auto-versioning
 
-The system computes a hash of the weights. A change of weights changes the hash. The new hash creates a new version automatically.
+The system computes a hash of the weights. A change of weights changes the hash. The new hash creates a new version automatically. Section 26 stores versions as deltas. The hash always covers the full assembled artifact.
 
 ![Figure 5. Versioning and rollback flow.](../figures/fig5.png)
 
@@ -202,7 +232,7 @@ Each cluster has a changelog. The changelog records the reason and the expected 
 
 ### 8.1 Embedded hash layer
 
-One proposal embeds a hash layer in the weights. The hash layer acts as an integrity seal.
+One proposal embeds a hash layer in the weights. The hash layer acts as an integrity seal. Sections 8.1 to 8.3 record this first proposal and its problems. Section 8.4 gives the resolution.
 
 ### 8.2 Atomic recompute race
 
@@ -210,19 +240,19 @@ A weight change and the hash recompute are two steps. Between the two steps, the
 
 ### 8.3 Fixed-point problem
 
-The hash layer is part of the weights. The hash must therefore include its own value. This is a fixed-point problem. A normal hash function cannot solve it.
+The hash layer is part of the weights. The hash must therefore include its own value. This is a fixed-point problem. A normal hash function cannot solve it directly. Section 31.2 removes the problem: the system sets the hash field to zero before it computes the hash.
 
-### 8.4 Frozen read-only hash region
+### 8.4 Resolution: the ROM verifies, the artifact carries its own seal
 
-The solution moves the hashes out of the weights. A separate frozen read-only region keeps the reference hashes. This follows the secure-boot ROM model.
+The frozen checker in ROM holds the hash-verification logic (Section 19). The self-referencing hash field lives inside the weight artifact, in the manifest header (Sections 23 and 31). The ROM verifies. The artifact carries its own seal. This follows the secure-boot ROM model. Zeroing the hash field before computation removes the fixed-point problem of Section 8.3. The atomic recompute race of Section 8.2 still applies. An update must write the weights and the seal in one atomic step. Limitation: a self-seal shows that the bytes are consistent. It does not show that an approved party made them. The signed header of Section 31.5 gives this proof. The location of the trusted reference, for example a public key or a Merkle root, is UNDECIDED (Section 25).
 
-![Figure 4. Merkle tree over weight clusters with a frozen ROM hash region.](../figures/fig4.png)
+![Figure 4. Merkle tree over weight clusters. The frozen checker in ROM verifies the seals. The seal lives in the artifact.](../figures/fig4.png)
 
-*Figure 4. Merkle tree over weight clusters with a frozen ROM hash region.*
+*Figure 4. Merkle tree over weight clusters. The frozen checker in ROM verifies the seals. The seal lives in the artifact.*
 
 ### 8.5 Merkle tree over weight clusters
 
-A Merkle tree has one leaf for each weight cluster. The system can verify one cluster without a check of all weights. Git and blockchains use the same structure.
+A Merkle tree has one leaf for each weight cluster. The system can verify one cluster without a check of all weights. Git and blockchains use the same structure. The per-layer hashes in the manifest header (Section 23.1) are the leaves inside one cluster.
 
 ## 13. Debugging
 
@@ -236,25 +266,25 @@ Circuit tracing follows a computation through the model, in the style of Anthrop
 
 ### 13.3 Hash-based rollback and diff
 
-Cluster hashes identify the changed clusters. The designer can roll back one cluster to a previous version. The designer can compare two versions cluster by cluster.
+Cluster hashes identify the changed clusters. The designer can roll back one cluster to a previous version. The designer can compare two versions cluster by cluster. Section 26 makes rollback a delta operation.
 
 ### 13.4 Activation trace
 
-An activation trace records the activations of one run. It is the analog of a stack trace.
+An activation trace records the activations of one run. It is the analog of a stack trace. Sections 21 and 30 refine debugging with activation breakpoints, binary search, and a debugger cluster.
 
 ## 14. Remaining Open Issues
 
 ### 14.1 Security
 
-Adversarial inputs can cause wrong output. Training-data poisoning puts wrong behavior into the weights. A hash cannot catch poisoning. The hash seals the poisoned weights as valid.
+Adversarial inputs can cause wrong output. Training-data poisoning puts wrong behavior into the weights. A hash cannot catch poisoning. The hash seals the poisoned weights as valid. Section 17 treats input poisoning. Training-data poisoning stays open (Section 16).
 
 ### 14.2 Testing
 
-Differential testing compares two implementations on the same inputs. Property-based testing checks properties on random inputs. For weights, the result is a probabilistic bound. Line coverage has no meaning for weights. Statistical coverage of the input space replaces it.
+Differential testing compares two implementations on the same inputs. Property-based testing checks properties on random inputs. For weights, the result is a probabilistic bound. Line coverage has no meaning for weights. Statistical coverage of the input space replaces it. Section 29 assigns these methods to the dev and production environments.
 
 ### 14.3 Tooling ecosystem
 
-Code has an IDE, a debugger, and a profiler. Weight-native systems need analog tools. These tools do not exist yet in a complete form.
+Code has an IDE, a debugger, and a profiler. Weight-native systems need analog tools. These tools do not exist yet in a complete form. Sections 21 and 30 define the debugger approach.
 
 ## 15. Design Decisions Log
 
@@ -267,12 +297,12 @@ Each entry records what was decided, why, the positives, the negatives, and the 
 - **Negatives:** Results are not exact. Verification becomes harder.
 - **Effect on the program:** All later sections follow from this decision.
 
-### D2. The inference engine is the only executable program and the boot-time loader.
+### D2. The inference engine is the only general executable program and the boot-time loader.
 
 - **Why:** It makes the trusted code base small.
 - **Positives:** Small code base to audit.
 - **Negatives:** The engine becomes a single point of failure.
-- **Effect on the program:** Security work concentrates on the engine and the weights.
+- **Effect on the program:** Security work concentrates on the engine and the weights. Decision (c) adds the frozen checker to the trusted code base.
 
 ### D3. Device detection uses tokenized electrical signatures.
 
@@ -316,12 +346,12 @@ Each entry records what was decided, why, the positives, the negatives, and the 
 - **Negatives:** The hash has no semantic meaning.
 - **Effect on the program:** Changelogs are mandatory for each cluster change.
 
-### D9. Reference hashes stay in a frozen read-only region, in a Merkle tree.
+### D9. The frozen checker in ROM holds the hash-verification logic. Each artifact carries its own self-referencing seal. Cluster hashes form a Merkle tree.
 
-- **Why:** An embedded hash layer has a race and a fixed-point problem.
-- **Positives:** No self-reference. Partial verification is possible.
-- **Negatives:** The ROM region needs a separate update process.
-- **Effect on the program:** The boot process verifies the root hash first.
+- **Why:** Logic in ROM cannot change at runtime. Zeroing the hash field removes the fixed-point problem (Section 31.2).
+- **Positives:** Partial verification is possible. Each file verifies itself.
+- **Negatives:** The atomic recompute race remains. The ROM needs a separate update process. A self-seal alone does not prove authenticity.
+- **Effect on the program:** The boot process runs the frozen checker first. See Sections 8.4, 19, and 31. This entry replaces the earlier text that moved all hashes out of the weights.
 
 ### D10. Debugging uses activation probes, circuit tracing, and hash-based rollback.
 
@@ -340,10 +370,10 @@ Each entry records what was decided, why, the positives, the negatives, and the 
 6. Specify the frozen hash region and the Merkle tree layout.
 7. Specify the update process for the frozen hash region.
 8. Define the changelog format for each cluster.
-9. Open question: how can a design detect training-data poisoning that a hash cannot catch?
-10. Open question: which statistical coverage metric replaces line coverage?
-11. Open question: which point between precision and generalization suits each function?
-12. Open question: which tools replace the IDE, the debugger, and the profiler?
+9. Open question: how can a design detect training-data poisoning that a hash cannot catch? Status: partly answered. Section 17 adds an input gate for input poisoning. Training-data poisoning is UNDECIDED. Why it matters: a hash seals poisoned weights as valid (Section 14.1).
+10. Open question: which statistical coverage metric replaces line coverage? Status: UNDECIDED. Why it matters: without a metric, the program cannot say when testing is complete (Sections 14.2 and 29.5).
+11. Open question: which point between precision and generalization suits each function? Status: partly answered. Section 18.3 sets a 50% error threshold. Section 28.3 sets tolerance for each cluster in its capability. The point for each function is UNDECIDED. Why it matters: it sets how exact each cluster must be.
+12. Open question: which tools replace the IDE, the debugger, and the profiler? Status: partly answered. Sections 21 and 30 define the debugger approach. The IDE and profiler analogs are UNDECIDED. Why it matters: engineers cannot build or tune clusters without them.
 
 ## 17. Input Poisoning vs Weight Poisoning
 
@@ -406,7 +436,7 @@ The checker is written in C. The compiler compiles it at build time to a tiny bi
 
 ### 20.1 Cluster sizes
 
-The table gives the size of one cluster at four scales. Sizes are for FP16.
+The table gives the size of one cluster at four scales. Sizes are for FP16. Assumption: FP16 uses 2 bytes for each parameter, FP8 uses 1 byte, and 4-bit uses 0.5 byte. The stated sizes agree with this. Limitation: the discussion did not record how it derived the parameter counts, for example the vocabulary size or the embedding size. The numbers are estimates, not measurements.
 
 | Cluster | Layers | Model dim (d) | FF dim | Parameters | Size (FP16) |
 |---|---|---|---|---|---|
@@ -451,7 +481,7 @@ The real difficulty is replay, not stepping. Randomness and accumulated state ma
 
 ### 21.3 Binary search debugging
 
-Halt at a layer. If the output is correct, the bug is in the forward layers. If the output is wrong, the bug is in the backward layers. Repeat to narrow down the bug.
+Halt at a layer. If the output is correct, the bug is in the forward layers, after the halt point. If the output is wrong, the bug is in the backward layers, before the halt point. Repeat to narrow down the bug. Section 30 refines this method.
 
 ### 21.4 Debugger cluster
 
@@ -465,7 +495,7 @@ Debugging complexity becomes parallel, not sequential. This follows the microser
 
 ### 22.1 Functions and objects
 
-Primitive clusters are functions. Cluster classes are objects. A cluster class keeps state and behavior in weights.
+Primitive clusters are functions. Cluster classes are objects. The glossary also calls them higher-order clusters. A cluster class keeps state and behavior in weights. Its behavior is a routing pattern in the router weights (Section 22.3). The discussion does not state which weights keep the state of a class (Section 25).
 
 ### 22.2 Instantiation
 
@@ -495,7 +525,7 @@ The router finds clusters by reading headers. It matches the hash or the name. T
 
 ### 23.3 Self-verified header
 
-The header is PART of the weight file. A change to the header breaks the hash. Thus the header is self-verified.
+The header is PART of the weight file. A change to the header breaks the hash. Thus the header is self-verified. Section 8.4 explains how this seal relates to the frozen checker in ROM.
 
 ### 23.4 Self-referencing hash
 
@@ -507,7 +537,7 @@ Use a length-extension-resistant hash, for example SHA-3.
 
 ## 24. Updated Design Decisions Log
 
-This log records the decisions from the later part of the discussion. It extends Section 15. Items (a) to (g) record the decisions of Sections 17 to 23. Items (h) to (m) record the decisions of Sections 26 to 31. After the summary table, each of the items (h) to (m) also records why, the positives, the negatives, and the effect on the program, as in Section 15.
+This log records the decisions from the later part of the discussion. It extends Section 15. Items (a) to (g) record the decisions of Sections 17 to 23. Items (h) to (m) record the decisions of Sections 26 to 31. After the summary table, each item records what was decided, why, the positives, the negatives, and the effect on the program, as in Section 15. Where the discussion gives no content for a field, the field says: Not stated in discussion.
 
 | ID | Decision | Section |
 |---|---|---|
@@ -524,6 +554,55 @@ This log records the decisions from the later part of the discussion. It extends
 | k | Dev and production use separate test regimes. | 29 |
 | l | Debugging uses binary search at cluster boundaries and a dedicated debugger cluster. | 30 |
 | m | The weight file uses a self-referencing hash, and the header is part of the weight file. | 31 |
+
+### (a) Input gate separate from hash layer
+
+- **Why:** A hash cannot detect input poisoning. Correct weights can still give wrong output (Section 17.2).
+- **Positives:** Each layer has one job. The design defends against attacks on correct weights.
+- **Negatives:** Not stated in discussion.
+- **Effect on the program:** The runtime needs input distribution monitors and confidence thresholds (Section 17.3).
+
+### (b) Error-raising as trained cluster behavior with 50% confidence threshold
+
+- **Why:** Type confusion, for example float plus string, is an attack (Section 18.1). Fail-closed means no guessing.
+- **Positives:** Incompatible input gives an error code, not a guess.
+- **Negatives:** The error boundary is learned and can drift. Drift causes false rejects and false accepts (Section 18.4).
+- **Effect on the program:** The error boundary needs pinning.
+
+### (c) Frozen checker in ROM/signed firmware, C-compiled, outside weights
+
+- **Why:** Weights are probabilistic. A safety gate cannot tolerate even 1% error (Section 19.1).
+- **Positives:** Deterministic. Tiny: about 1-4 KB. Runs before the weights load, like secure boot.
+- **Negatives:** Not stated in discussion.
+- **Effect on the program:** The build needs a C compile step. The trusted code base is the inference engine and the frozen checker.
+
+### (d) Weight-native kernel size trade-off accepted (storage up, code down)
+
+- **Why:** Code complexity becomes near zero (Section 20.4).
+- **Positives:** Near-zero code complexity.
+- **Negatives:** Storage is 10-100x heavier. Debugging complexity moves into the weights (Section 20.5).
+- **Effect on the program:** Debugging needs activation tooling (Section 21).
+
+### (e) Activation breakpoints + binary search + debugger cluster for debugging
+
+- **Why:** Debugging complexity moves into the weights (Section 20.5).
+- **Positives:** Full state is visible at a breakpoint. Binary search narrows the fault. Complexity becomes parallel.
+- **Negatives:** Granularity is coarse. Replay is difficult (Sections 21.1 and 21.2).
+- **Effect on the program:** The program needs a debugger cluster and trace IDs. Section 30 refines this decision.
+
+### (f) Dispatch weights for dynamic cluster composition
+
+- **Why:** A cluster class is a routing pattern, not new weights (Section 22.2).
+- **Positives:** No weight swapping. No new weight snapshot for each instance.
+- **Negatives:** Not stated in discussion.
+- **Effect on the program:** The router is trained on task-to-sequence pairs with a fixed cluster registry.
+
+### (g) Weight manifest header with self-referencing hash
+
+- **Why:** The router must find clusters (Section 23.2).
+- **Positives:** Direct index lookup. The header verifies itself.
+- **Negatives:** Not stated in discussion.
+- **Effect on the program:** The header is part of the weight file. The hash uses SHA-3. Decision (m) refines this decision.
 
 ### (h) The store keeps deltas between weight versions, not full copies.
 
@@ -571,18 +650,19 @@ This log records the decisions from the later part of the discussion. It extends
 
 These questions add to the open questions in Section 16.
 
-1. Does the frozen checker need its own hash or signing?
-2. Can router dispatch weights themselves be versioned and hashed?
-3. How can training make error boundaries without false rejects?
-4. Can cluster classes share primitive weights (parameter sharing) to reduce the 279 MB footprint?
-5. How long can a delta chain grow before the store needs a full snapshot (Section 26)?
-6. Who signs the capability tokens, and with which key (Section 27)?
-7. Which resource limits does a capability declare, and how does the runtime enforce them (Section 27)?
-8. How many inputs does shadow execution need before promotion (Section 28)?
-9. How large must the golden input set be, and who maintains it (Section 29)?
-10. Which statistical coverage metric measures the input space (Section 29)?
-11. Who verifies the debugger cluster itself (Section 30)?
-12. Who signs the manifest header, and does the header signature relate to the frozen ROM reference hashes of Section 8.4 (Section 31)?
+1. Does the frozen checker need its own hash or signing? Position recorded: the checker lives in ROM or in a signed firmware image (Section 19.2). Whether a ROM-hosted checker also needs its own hash is UNDECIDED. Why it matters: the ROM update process (D9) depends on it.
+2. Can router dispatch weights themselves be versioned and hashed? The router is a cluster (Section 22.3). Sections 23, 26, and 31 give every weight artifact a header and a hash. The discussion states no exception for the router. An explicit decision is UNDECIDED. Why it matters: a router change changes every call graph.
+3. How can training make error boundaries without false rejects? Status: UNDECIDED. Why it matters: false rejects lower availability (D7), and false accepts break the fail-closed rule.
+4. Can cluster classes share primitive weights (parameter sharing) to reduce the 279 MB footprint? Position recorded: cluster classes reuse primitives through routing and need no new weights (Section 22.2). Sharing between the 8 OS services is UNDECIDED. Why it matters: it decides if the 279 MB FP16 estimate can become smaller.
+5. How long can a delta chain grow before the store needs a full snapshot (Section 26)? Status: UNDECIDED. Why it matters: it sets the rollback cost and the storage cost.
+6. Who signs the capability tokens, and with which key (Section 27)? Status: UNDECIDED. Why it matters: without a defined signer, the signature proves nothing.
+7. Which resource limits does a capability declare, and how does the runtime enforce them (Section 27)? Status: UNDECIDED. Why it matters: the router cannot enforce limits that nobody defined.
+8. How many inputs does shadow execution need before promotion (Section 28)? Status: UNDECIDED. Why it matters: too few inputs can promote a faulty cluster.
+9. How large must the golden input set be, and who maintains it (Section 29)? Status: UNDECIDED. Why it matters: the golden set defines what the regression check can catch.
+10. Is the golden-set tolerance band of Section 29.2 the capability tolerance of Section 28.3? Status: UNDECIDED. Why it matters: two different bands can give two different results for one update.
+11. Who verifies the debugger cluster itself (Section 30)? Status: UNDECIDED. Why it matters: a wrong debugger cluster gives wrong logs.
+12. Who signs the manifest header, and where is the trusted reference, for example a public key or a Merkle root (Sections 8.4 and 31)? Status: UNDECIDED. Why it matters: authenticity depends on it. A self-seal alone shows only consistency.
+13. Which weights keep the state of a cluster class (Section 22.1)? Status: UNDECIDED. Why it matters: state location decides how instances stay separate.
 
 ## 26. Delta Store and Weight Diffing as First-Class Operation
 
@@ -650,7 +730,7 @@ In dev, weights are mutable. Updates are permitted in dev. In production, weight
 
 ### 29.2 Dev testing
 
-Dev testing uses a golden input set. The golden input set contains known input-output pairs. Humans verify these pairs. The golden set runs on the old version and on the new version, with a tolerance band. Dev testing also uses adversarial fuzzing. Dev testing also uses distribution-shift simulation. These two methods find where the error boundary breaks.
+Dev testing uses a golden input set. The golden input set contains known input-output pairs. Humans verify these pairs. The golden set runs on the old version and on the new version, with a tolerance band. The discussion does not state if this band is the capability tolerance of Section 28.3 (Section 25). Dev testing also uses adversarial fuzzing. Dev testing also uses distribution-shift simulation. These two methods find where the error boundary breaks.
 
 ### 29.3 Production testing
 
@@ -690,7 +770,7 @@ Complexity becomes parallel, not sequential. This is the same pattern as microse
 
 ### 31.1 Relation to Sections 8 and 23
 
-This section refines Section 23. It also applies to the fixed-point problem of Section 8.3.
+This section refines Section 23. It removes the fixed-point problem of Section 8.3. Section 8.4 states the resolution: the frozen checker in ROM verifies, and the artifact carries its own seal.
 
 ### 31.2 Self-referencing hash trick
 
@@ -712,6 +792,17 @@ The router finds a cluster by a direct hash index. It does not do a linear scan 
 ### 31.5 Signed header
 
 The signed-header requirement stands. The discussion does not say who signs the header or which key is used. Section 25 records this as an open question.
+
+## 32. Next Steps
+
+These milestones are ordered. Each milestone has a definition of done. They replace the earlier backlog of Section 16 as the plan of work.
+
+1. **Train one isolated primitive cluster with a frozen checker and a golden test set.** Done when an addition cluster passes its golden test set and the frozen checker rejects every type-mismatched input in that set.
+2. **Build the router and the cluster registry with manifest headers.** Done when the router finds each registered cluster by a direct hash index and rejects a cluster whose header hash does not verify.
+3. **Compose two primitives into a higher-order cluster.** Done when the router runs a task as a sequence of two primitive clusters and the result passes a golden test set for that task.
+4. **Implement shadow execution with capability-declared tolerance.** Done when a new cluster version is promoted or rejected by the metric in its capability token, with exact match as the default.
+5. **Implement the delta store and the self-referencing hash.** Done when every stored delta reproduces a byte-identical full artifact whose self-referencing hash verifies.
+6. **Run adversarial fuzzing against the error boundary.** Done when a fuzzing report lists the false-reject and false-accept rates of each cluster error boundary.
 
 ## Appendix A. Karpathy ASD-STE100 Reference
 
@@ -779,3 +870,16 @@ The signed-header requirement stands. The discussion does not say who signs the 
 52. Statistical coverage replaces line coverage.
 53. The ecosystem needs IDE, debugger, and profiler analogs.
 54. Each design decision records what, why, positives, negatives, and effect on the program.
+55. Input poisoning needs an input gate separate from the hash (Section 17).
+56. Clusters raise error codes below 50% confidence (Section 18).
+57. A frozen checker in ROM runs before the weights load (Section 19).
+58. A weight-native kernel trades storage for code complexity (Section 20).
+59. Activation breakpoints and binary search support debugging (Section 21).
+60. A router composes primitive clusters through dispatch weights (Section 22).
+61. Each weight file has a manifest header (Section 23).
+62. A delta store keeps weight versions (Section 26).
+63. Capability tokens declare what a cluster may do (Section 27).
+64. Shadow execution makes updates safe (Section 28).
+65. Dev and production use separate test regimes (Section 29).
+66. A debugger cluster does context-aware logging (Section 30).
+67. The self-referencing hash zeroes its field before computation (Section 31).

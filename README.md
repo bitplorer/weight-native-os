@@ -34,6 +34,18 @@ On 2026-10-16 the authors added Sections 17-31. These sections record the later 
 
 A second update on 2026-10-16 added Sections 26-31, decisions (h)-(m) in Section 24, new open questions in Section 25, and Figure 6.
 
+## Quality pass 2026-10-16
+
+A quality pass added these parts and fixed internal issues:
+
+- Assumptions and Limitations
+- How This Differs from Existing Work (prior-work note)
+- Extended Glossary (router, capability token, delta store, shadow execution, frozen checker, manifest header, weight ID, and more)
+- Section 8.4 now resolves hash placement: the frozen checker in ROM verifies, and the artifact carries its own seal (consistent with Section 31)
+- Section 24: decisions (a)-(m) each record what, why, positives, negatives, and effect
+- Sections 16 and 25: each open question has a recorded position or UNDECIDED with a reason
+- 32. Next Steps: six ordered milestones with a definition of done
+
 ## Files
 
 - [PDF report](docs/weight-native-os-design-2026-10-16.pdf)
